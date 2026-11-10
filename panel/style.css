@@ -32,6 +32,7 @@ html, body {
 .title { font-size: 13.5px; font-weight: 600; }
 .spacer { flex: 1; }
 .badge-host { display: inline-flex; }
+.badge-host[hidden] { display: none; }
 .refresh-host { display: inline-flex; }
 
 .balance-row { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
@@ -218,9 +219,7 @@ html, body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--oc-success, #3f8f5f);
 }
-.phase-chip[data-phase='peak']::before { background: var(--oc-warning-text, #b45309); }
 
 .currency-btn {
   border: 1px solid var(--vu-border);
@@ -236,3 +235,11 @@ html, body {
 }
 .currency-btn:hover { opacity: 1; background: var(--oc-hover, rgba(0, 0, 0, 0.05)); }
 
+
+/* Same tones the Work Status card uses: warning for peak, success for off-peak. */
+.stack .seg-peak,
+.legend-dot.seg-peak { background: var(--oc-warning, #b45309); opacity: 1; }
+.stack .seg-off,
+.legend-dot.seg-off { background: var(--oc-success, #3f8f5f); opacity: 1; }
+.phase-chip::before { background: var(--oc-success, #3f8f5f); }
+.phase-chip[data-phase='peak']::before { background: var(--oc-warning, #b45309); }

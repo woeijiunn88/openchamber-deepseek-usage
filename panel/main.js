@@ -2242,6 +2242,26 @@ ${GUEST_UI_LOOK_CSS}`;
   var applyTone = (node, tone2) => {
     setAttr(node, "data-tone", tone2 && tone2 !== "neutral" ? tone2 : null);
   };
+  var mountBadge = (root, initial) => {
+    ensureStyle(UI_CSS);
+    let props = initial;
+    const node = el("span", "oc-sdk oc-sdk-badge");
+    root.append(node);
+    const paint = () => {
+      setText(node, props.label);
+      applyTone(node, props.tone);
+    };
+    paint();
+    return {
+      update: (next) => {
+        props = { ...props, ...next };
+        paint();
+      },
+      dispose: () => {
+        node.remove();
+      }
+    };
+  };
 
   // node_modules/@openchamber/sdk/dist/ui/list.js
   var listCount = 0;
@@ -2406,8 +2426,11 @@ ${GUEST_UI_LOOK_CSS}`;
   var balanceRow = h("div", "balance-row");
   var balanceValue = h("span", "big", "\u2014");
   var balanceCaption = h("span", "caption", "USD");
+  var balanceBadgeHost = h("span", "badge-host");
+  balanceBadgeHost.hidden = true;
+  var balanceBadge = mountBadge(balanceBadgeHost, { label: "blocked", tone: "warning" });
   var phaseChip = h("span", "phase-chip");
-  balanceRow.append(balanceValue, balanceCaption, h("span", "spacer"), phaseChip);
+  balanceRow.append(balanceValue, balanceCaption, balanceBadgeHost, h("span", "spacer"), phaseChip);
   var chatRow = h("div", "chat-row");
   var chatK = h("span", "chat-k", "Chat");
   var chatCost = h("span", "chat-cost", "");
@@ -2457,7 +2480,7 @@ ${GUEST_UI_LOOK_CSS}`;
   var banner = mountBanner(bannerHost, { tone: "error", title: "" });
   var paneTabsHandle = mountTabs(paneTabs, {
     items: [
-      { id: "spend", label: "Spend" },
+      { id: "spend", label: "Usage" },
       { id: "rates", label: "Rates" },
       { id: "sessions", label: "Sessions" }
     ],
@@ -2629,6 +2652,8 @@ ${GUEST_UI_LOOK_CSS}`;
     const others = (bal.infos ?? []).filter((entry) => entry.currency && entry.currency !== bal.currency);
     balanceCaption.textContent = bal.ok ? others.length > 0 ? others.map((entry) => `${entry.currency} ${entry.total}`).join(" \xB7 ") : bal.currency ?? "USD" : bal.reason === "no-key" ? "no local key" : "balance unavailable";
     balanceValue.title = bal.ok ? `${(bal.infos ?? []).map((entry) => `${entry.currency} ${entry.total} (topped up ${entry.toppedUp}, granted ${entry.granted})`).join(" \xB7 ")} \u2014 separate wallets, never summed. From api.deepseek.com/user/balance` : "Balance could not be read from the DeepSeek API.";
+    balanceBadgeHost.hidden = !(bal.ok && bal.isAvailable === false);
+    if (bal.ok && bal.isAvailable === false) balanceBadge.update({ label: "blocked", tone: "warning" });
     const day = (offset) => {
       const index = s.days.length - 1 - offset;
       return index >= 0 ? s.days[index] : null;
@@ -2729,23 +2754,20 @@ started ${fmtWhen(agg.startedAt)} \xB7 last ${fmtWhen(agg.lastMessageAt ?? 0)}
       const card = h("div", "card");
       card.append(h("div", "card-k", "Peak vs off-peak"));
       const stack = h("div", "stack");
-      const peakSeg = h("i");
+      const peakSeg = h("i", "seg-peak");
       peakSeg.style.width = `${(peakCny / split * 100).toFixed(2)}%`;
-      peakSeg.style.opacity = "0.8";
       peakSeg.title = `peak ${money(peakCny)}`;
-      const offSeg = h("i");
+      const offSeg = h("i", "seg-off");
       offSeg.style.width = `${(offCny / split * 100).toFixed(2)}%`;
-      offSeg.style.opacity = "0.35";
       offSeg.title = `off-peak ${money(offCny)}`;
       stack.append(peakSeg, offSeg);
       const legend = h("div", "legend");
-      for (const [label, value, opacity] of [
-        ["Peak", s.totals.peakOfficial, "0.8"],
-        ["Off-peak", s.totals.offOfficial, "0.35"]
+      for (const [label, value, tone2] of [
+        ["Peak", s.totals.peakOfficial, "seg-peak"],
+        ["Off-peak", s.totals.offOfficial, "seg-off"]
       ]) {
         const row = h("div", "legend-row");
-        const dot = h("span", "legend-dot");
-        dot.style.opacity = opacity;
+        const dot = h("span", `legend-dot ${tone2}`);
         row.append(
           dot,
           h("span", "legend-name", label),
