@@ -2428,7 +2428,7 @@ ${GUEST_UI_LOOK_CSS}`;
   var balanceCaption = h("span", "caption", "USD");
   var balanceBadgeHost = h("span", "badge-host");
   balanceBadgeHost.hidden = true;
-  var balanceBadge = mountBadge(balanceBadgeHost, { label: "blocked", tone: "warning" });
+  var balanceBadge = mountBadge(balanceBadgeHost, { label: "blocked", tone: "error" });
   var phaseChip = h("span", "phase-chip");
   balanceRow.append(balanceValue, balanceCaption, balanceBadgeHost, h("span", "spacer"), phaseChip);
   var chatRow = h("div", "chat-row");
@@ -2653,7 +2653,7 @@ ${GUEST_UI_LOOK_CSS}`;
     balanceCaption.textContent = bal.ok ? others.length > 0 ? others.map((entry) => `${entry.currency} ${entry.total}`).join(" \xB7 ") : bal.currency ?? "USD" : bal.reason === "no-key" ? "no local key" : "balance unavailable";
     balanceValue.title = bal.ok ? `${(bal.infos ?? []).map((entry) => `${entry.currency} ${entry.total} (topped up ${entry.toppedUp}, granted ${entry.granted})`).join(" \xB7 ")} \u2014 separate wallets, never summed. From api.deepseek.com/user/balance` : "Balance could not be read from the DeepSeek API.";
     balanceBadgeHost.hidden = !(bal.ok && bal.isAvailable === false);
-    if (bal.ok && bal.isAvailable === false) balanceBadge.update({ label: "blocked", tone: "warning" });
+    if (bal.ok && bal.isAvailable === false) balanceBadge.update({ label: "blocked", tone: "error" });
     const day = (offset) => {
       const index = s.days.length - 1 - offset;
       return index >= 0 ? s.days[index] : null;

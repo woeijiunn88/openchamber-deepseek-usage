@@ -707,7 +707,7 @@ async function buildStatusView(locale, directory) {
         label: "Balance",
         value: balance.ok ? `${sym}${balance.total ?? "\u2014"}` : "\u2014",
         tooltip: balance.ok ? `${wallets || `${sym}${balance.total ?? ""}`} \u2014 separate wallets, never summed. From api.deepseek.com/user/balance.` : balance.reason === "no-key" ? "No local DeepSeek key found." : "Balance unavailable from the DeepSeek API.",
-        ...balance.ok && balance.isAvailable === false ? { badge: { label: "blocked", tone: "warning" } } : {}
+        ...balance.ok && balance.isAvailable === false ? { badge: { label: "blocked", tone: "error" } } : {}
       },
       {
         kind: "line",

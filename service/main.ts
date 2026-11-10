@@ -1213,7 +1213,7 @@ async function buildStatusView(locale: string | null, directory: string | null):
           : balance.reason === 'no-key'
             ? 'No local DeepSeek key found.'
             : 'Balance unavailable from the DeepSeek API.',
-        ...(balance.ok && balance.isAvailable === false ? { badge: { label: 'blocked', tone: 'warning' as const } } : {}),
+        ...(balance.ok && balance.isAvailable === false ? { badge: { label: 'blocked', tone: 'error' as const } } : {}),
       },
       {
         kind: 'line',

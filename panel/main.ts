@@ -139,7 +139,7 @@ const balanceValue = h('span', 'big', '—');
 const balanceCaption = h('span', 'caption', 'USD');
 const balanceBadgeHost = h('span', 'badge-host');
 balanceBadgeHost.hidden = true;
-const balanceBadge = mountBadge(balanceBadgeHost, { label: 'blocked', tone: 'warning' });
+const balanceBadge = mountBadge(balanceBadgeHost, { label: 'blocked', tone: 'error' });
 const phaseChip = h('span', 'phase-chip');
 balanceRow.append(balanceValue, balanceCaption, balanceBadgeHost, h('span', 'spacer'), phaseChip);
 
@@ -408,7 +408,7 @@ function renderHeader(): void {
     : 'Balance could not be read from the DeepSeek API.';
 
   balanceBadgeHost.hidden = !(bal.ok && bal.isAvailable === false);
-  if (bal.ok && bal.isAvailable === false) balanceBadge.update({ label: 'blocked', tone: 'warning' });
+  if (bal.ok && bal.isAvailable === false) balanceBadge.update({ label: 'blocked', tone: 'error' });
 
   const day = (offset: number): DayAgg | null => {
     const index = s.days.length - 1 - offset;
