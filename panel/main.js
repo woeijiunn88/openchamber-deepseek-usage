@@ -2673,7 +2673,7 @@ ${GUEST_UI_LOOK_CSS}`;
     stat30V.textContent = money(last30);
     stat30V.title = `\xA5${last30.toFixed(2)} official`;
     phaseChip.dataset.phase = s.now.isPeak ? "peak" : "off";
-    phaseChip.textContent = `${phaseText()} \xB7 ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
+    phaseChip.textContent = `${phaseText()} \xB7 ${fmtCountdown(s.now.nextChangeAt - Date.now())} left`;
     const nextLabel = s.now.nextPhase === "peak" ? "peak" : "off-peak";
     phaseChip.title = `Next ${nextLabel} time:
 ${fmtSwitchUtc(s.now.nextChangeAt)} UTC
