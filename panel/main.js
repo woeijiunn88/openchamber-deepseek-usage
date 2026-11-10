@@ -2589,6 +2589,14 @@ ${GUEST_UI_LOOK_CSS}`;
     const p = (n) => String(n).padStart(2, "0");
     return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
+  function fmtSwitch(ms) {
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    const utc = `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+    const shifted = new Date(ms + 8 * 36e5);
+    const local = `${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())} GMT+8`;
+    return `${utc} \xB7 ${local}`;
+  }
   function fmtCountdown(ms) {
     const s = Math.max(0, Math.floor(ms / 1e3));
     const hours = Math.floor(s / 3600);
@@ -2640,7 +2648,7 @@ ${GUEST_UI_LOOK_CSS}`;
     phaseChip.dataset.phase = s.now.isPeak ? "peak" : "off";
     phaseChip.textContent = `${phaseText()} \xB7 ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
     phaseChip.title = `Peak windows: ${s.window.utc}
-Next switch: ${s.now.nextPhase}`;
+Next switch to ${s.now.nextPhase}: ${fmtSwitch(s.now.nextChangeAt)}`;
     stamp.textContent = `updated ${fmtClock(s.generatedAt)}`;
     stamp.title = new Date(s.generatedAt).toLocaleString();
     footRight.textContent = s.balance.ok ? "\xA5 official \xB7 $ recorded" : "";
@@ -2838,7 +2846,7 @@ right-click copies the id`;
     phase.append(h("div", "card-k", "Current phase"));
     phase.append(
       kvRow("Phase", `${phaseText()} \xB7 switches in ${countdown}`, `Peak windows: ${s.window.utc}. Local: ${s.window.local}.`),
-      kvRow("Next", s.now.nextPhase, "Phase after the next switch.")
+      kvRow("Next switch", `${s.now.nextPhase} \xB7 ${fmtSwitch(s.now.nextChangeAt)}`, "Shown in UTC and GMT+8.")
     );
     const price = (tier, peakKey, offKey) => {
       const pk = s.pricing[tier]?.[peakKey];

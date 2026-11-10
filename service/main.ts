@@ -1059,6 +1059,16 @@ function normalizeDir(value: string | null | undefined): string {
   return (value ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
+function fmtSwitch(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const utcDate = `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const utc = `${utcDate} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+  const shifted = new Date(ms + 8 * 3_600_000);
+  const local = `${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())} GMT+8`;
+  return `${utc} · ${local}`;
+}
+
 function countdownShort(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(s / 3600);
@@ -1214,7 +1224,7 @@ async function buildStatusView(locale: string | null, directory: string | null):
         label: 'Phase',
         dot: peak ? 'warning' : 'success',
         value: `${peak ? 'peak' : 'off-peak'} \u00b7 ${countdownShort(change.at - now)}`,
-        tooltip: `Peak Mon\u2013Fri 01:00\u201304:00 and 06:00\u201310:00 UTC. Next switch to ${change.phase}.`,
+        tooltip: `Peak Mon\u2013Fri 01:00\u201304:00 and 06:00\u201310:00 UTC. Next switch to ${change.phase} at ${fmtSwitch(change.at)}.`,
       },
     ],
     controls: [{ kind: 'button', id: 'refresh', label: 'Refresh' }],
