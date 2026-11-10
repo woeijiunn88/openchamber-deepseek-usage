@@ -431,7 +431,7 @@ function renderHeader(): void {
   stat30V.title = `¥${last30.toFixed(2)} official`;
 
   phaseChip.dataset.phase = s.now.isPeak ? 'peak' : 'off';
-  phaseChip.textContent = `${phaseText()} · ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
+  phaseChip.textContent = `${phaseText()} · ${fmtCountdown(s.now.nextChangeAt - Date.now())} left`;
   const nextLabel = s.now.nextPhase === 'peak' ? 'peak' : 'off-peak';
   phaseChip.title =
     `Next ${nextLabel} time:\n` +
