@@ -1,0 +1,806 @@
+"use strict";
+
+// service/main.ts
+var import_node_http = require("node:http");
+var import_node_fs = require("node:fs");
+var import_node_os = require("node:os");
+var import_node_path = require("node:path");
+var import_node_sqlite = require("node:sqlite");
+var PORT = Number(process.env.OPENCHAMBER_SERVICE_PORT || 0);
+var TOKEN = process.env.OPENCHAMBER_SERVICE_TOKEN || "";
+var USAGE_TTL_MS = 6e4;
+var USAGE_IDLE_RELEASE_MS = 10 * 6e4;
+var REFRESH_OVERLAP_MS = 2 * 36e5;
+var PRICING = {
+  flash: { hitOff: 0.02, hitPeak: 0.04, missOff: 1, missPeak: 2, outOff: 4, outPeak: 8 },
+  pro: { hitOff: 0.15, hitPeak: 0.3, missOff: 4.5, missPeak: 9, outOff: 13.5, outPeak: 27 }
+};
+var PEAK_WINDOW_UTC = "\u5468\u4E00\u81F3\u5468\u4E94 01:00\u201304:00\u300106:00\u201310:00 UTC";
+var PEAK_WINDOW_LOCAL = "\u5317\u4EAC\u65F6\u95F4 09:00\u201312:00\u300114:00\u201318:00";
+function tierOf(model) {
+  const m = model.toLowerCase();
+  if (!m.startsWith("deepseek")) return null;
+  return m.includes("pro") ? "pro" : "flash";
+}
+function isPeak(date) {
+  const day = date.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const h = date.getUTCHours();
+  return h >= 1 && h < 4 || h >= 6 && h < 10;
+}
+function nextChange(fromMs) {
+  const current = isPeak(new Date(fromMs));
+  let t = Math.ceil(fromMs / 6e4) * 6e4;
+  for (let i = 0; i < 8 * 24 * 60; i += 1) {
+    t += 6e4;
+    const phase = isPeak(new Date(t));
+    if (phase !== current) return { at: t, phase: phase ? "peak" : "offpeak" };
+  }
+  return { at: fromMs, phase: current ? "peak" : "offpeak" };
+}
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function localDate(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function totalTokens(t) {
+  return t.input + t.output + t.reasoning + t.cacheRead + t.cacheWrite;
+}
+function fmtTokens(n) {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(Math.round(n));
+}
+function fmtCny(n) {
+  if (n >= 100) return `\xA5${n.toFixed(1)}`;
+  if (n >= 1) return `\xA5${n.toFixed(2)}`;
+  return `\xA5${n.toFixed(3)}`;
+}
+var fmtInt = (n) => Math.round(n).toLocaleString("en-US");
+function emptyTokens() {
+  return { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
+}
+function addTokens(a, b) {
+  a.input += b.input;
+  a.output += b.output;
+  a.reasoning += b.reasoning;
+  a.cacheRead += b.cacheRead;
+  a.cacheWrite += b.cacheWrite;
+  return a;
+}
+function messageOfficialCost(tokens, tier, peak) {
+  if (!tier) return 0;
+  const p = PRICING[tier];
+  const hit = peak ? p.hitPeak : p.hitOff;
+  const miss = peak ? p.missPeak : p.missOff;
+  const out = peak ? p.outPeak : p.outOff;
+  return (tokens.input * miss + tokens.cacheRead * hit + (tokens.output + tokens.reasoning) * out) / 1e6;
+}
+function findDb() {
+  const candidates = [
+    process.env.OPENCODE_DB,
+    (0, import_node_path.join)((0, import_node_os.homedir)(), ".local", "share", "opencode", "opencode.db")
+  ].filter((x) => Boolean(x));
+  for (const c of candidates) if ((0, import_node_fs.existsSync)(c)) return c;
+  return null;
+}
+function credentialKey(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    for (const candidate of [parsed.key, parsed.access, parsed.access_token]) {
+      if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    }
+  } catch {
+  }
+  return null;
+}
+function credentialFromDb(dbPath) {
+  let db = null;
+  try {
+    db = new import_node_sqlite.DatabaseSync(dbPath, { readOnly: true });
+    const hasTable = db.prepare(`SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='credential'`).get();
+    if (!hasTable) return null;
+    const rows = db.prepare(
+      `SELECT value
+           FROM credential
+          WHERE integration_id = 'deepseek'
+            AND (active IS NULL OR active = 1)
+          ORDER BY time_updated DESC`
+    ).all();
+    for (const row of rows) {
+      const key = credentialKey(row.value);
+      if (key) return { key, source: "opencode.db" };
+    }
+  } catch {
+  } finally {
+    db?.close();
+  }
+  return null;
+}
+function resolveApiKey() {
+  const env = (process.env.DEEPSEEK_API_KEY || "").trim();
+  if (env) return { key: env, source: "env" };
+  const secretFile = (0, import_node_path.join)((0, import_node_os.homedir)(), ".config", "opencode", "secrets", "deepseek-api-key");
+  try {
+    const v = (0, import_node_fs.readFileSync)(secretFile, "utf8").trim();
+    if (v) return { key: v, source: "secrets/deepseek-api-key" };
+  } catch {
+  }
+  const dbPath = findDb();
+  if (dbPath) {
+    const stored = credentialFromDb(dbPath);
+    if (stored) return stored;
+  }
+  const authFile = (0, import_node_path.join)((0, import_node_os.homedir)(), ".local", "share", "opencode", "auth.json");
+  try {
+    const auth = JSON.parse((0, import_node_fs.readFileSync)(authFile, "utf8"));
+    const entry = auth.deepseek;
+    if (entry && typeof entry.key === "string" && entry.key.trim()) {
+      return { key: entry.key.trim(), source: "auth.json" };
+    }
+  } catch {
+  }
+  return { key: null, source: null };
+}
+function detectSchema(db) {
+  try {
+    const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN ('session_v2','session_message')`).all();
+    if (tables.length === 2) {
+      const count = db.prepare("SELECT COUNT(*) AS n FROM session_message").get();
+      if (num(count?.n) > 0) return "v2";
+    }
+  } catch {
+  }
+  return "v1";
+}
+function rowToUsage(row) {
+  const ts = num(row.ts);
+  const tokens = {
+    input: num(row.input),
+    output: num(row.output),
+    reasoning: num(row.reasoning),
+    cacheRead: num(row.cache_read),
+    cacheWrite: num(row.cache_write)
+  };
+  const model = row.model ? String(row.model) : "";
+  return {
+    id: String(row.id ?? ""),
+    sid: String(row.sid ?? ""),
+    ts,
+    model,
+    provider: row.provider ? String(row.provider) : null,
+    tokens,
+    cost: num(row.cost)
+  };
+}
+function openDb(dbPath) {
+  return new import_node_sqlite.DatabaseSync(dbPath, { readOnly: true });
+}
+var ROW_SELECT_V2 = `SELECT id,
+        session_id AS sid,
+        time_created AS ts,
+        json_extract(data,'$.model.id') AS model,
+        json_extract(data,'$.model.providerID') AS provider,
+        json_extract(data,'$.tokens.input') AS input,
+        json_extract(data,'$.tokens.output') AS output,
+        json_extract(data,'$.tokens.reasoning') AS reasoning,
+        json_extract(data,'$.tokens.cache.read') AS cache_read,
+        json_extract(data,'$.tokens.cache.write') AS cache_write,
+        json_extract(data,'$.cost') AS cost
+ FROM session_message
+ WHERE type = 'assistant'
+   AND json_extract(data,'$.model.id') LIKE 'deepseek%'
+   -- \u53EA\u7EDF\u8BA1\u4ED8\u8D39 DeepSeek \u63A5\u53E3\u7684\u8C03\u7528\uFF1A\u540C\u65CF\u6A21\u578B\u8D70\u522B\u7684\u901A\u9053\uFF08opencode \u514D\u8D39\u989D\u5EA6 deepseek-v4.1-flash-free\uFF09\u4E0D\u8BA1\u8D39\uFF0C\u4E5F\u4E0D\u8FDB\u9762\u677F
+   AND COALESCE(json_extract(data,'$.model.providerID'), 'deepseek') LIKE 'deep%'`;
+var ROW_SELECT_V1 = `SELECT id,
+        session_id AS sid,
+        time_created AS ts,
+        json_extract(data,'$.modelID') AS model,
+        json_extract(data,'$.providerID') AS provider,
+        json_extract(data,'$.tokens.input') AS input,
+        json_extract(data,'$.tokens.output') AS output,
+        json_extract(data,'$.tokens.reasoning') AS reasoning,
+        json_extract(data,'$.tokens.cache.read') AS cache_read,
+        json_extract(data,'$.tokens.cache.write') AS cache_write,
+        json_extract(data,'$.cost') AS cost
+ FROM message
+ WHERE json_extract(data,'$.role') = 'assistant'
+   AND json_extract(data,'$.modelID') LIKE 'deepseek%'
+   -- \u540C\u4E0A\uFF1A\u514D\u8D39\u989D\u5EA6\u6A21\u578B\u540C\u65CF\u4F46\u4E0D\u8BA1\u8D39
+   AND COALESCE(json_extract(data,'$.providerID'), 'deepseek') LIKE 'deep%'`;
+function loadRows(db, schema, sinceMs) {
+  const base = schema === "v2" ? ROW_SELECT_V2 : ROW_SELECT_V1;
+  const useSince = typeof sinceMs === "number" && sinceMs > 0;
+  const stmt = db.prepare(useSince ? `${base} AND time_created >= ?` : base);
+  const raw = useSince ? stmt.all(sinceMs) : stmt.all();
+  const rows = [];
+  for (const r of raw) {
+    const row = rowToUsage(r);
+    if (!row.id || !row.model) continue;
+    rows.push(row);
+  }
+  return rows;
+}
+function loadMeta(db, schema) {
+  const meta = /* @__PURE__ */ new Map();
+  const children = /* @__PURE__ */ new Map();
+  const sessions = db.prepare(
+    schema === "v2" ? "SELECT id, parent_id AS parentId, title, time_created AS created, directory, time_viewed AS viewed FROM session_v2" : "SELECT id, parent_id AS parentId, title, time_created AS created, directory, 0 AS viewed FROM session"
+  ).all();
+  for (const s of sessions) {
+    meta.set(String(s.id), {
+      parentId: s.parentId ? String(s.parentId) : null,
+      title: String(s.title ?? ""),
+      created: num(s.created),
+      directory: String(s.directory ?? ""),
+      viewed: num(s.viewed)
+    });
+  }
+  for (const [id, m] of meta) {
+    if (!m.parentId) continue;
+    const list = children.get(m.parentId);
+    if (list) list.push(id);
+    else children.set(m.parentId, [id]);
+  }
+  return { meta, children };
+}
+function loadUsage(dbPath) {
+  const db = openDb(dbPath);
+  try {
+    const schema = detectSchema(db);
+    const rows = loadRows(db, schema);
+    const { meta, children } = loadMeta(db, schema);
+    return {
+      schema,
+      dbPath,
+      generatedAt: Date.now(),
+      rows,
+      byId: new Map(rows.map((r) => [r.id, r])),
+      meta,
+      children
+    };
+  } finally {
+    db.close();
+  }
+}
+function emptyDay(date) {
+  return { date, requests: 0, tokens: emptyTokens(), cost: 0, official: 0, peakOfficial: 0, offOfficial: 0 };
+}
+function emptyModel(model, tier) {
+  return { model, tier, requests: 0, tokens: emptyTokens(), cost: 0, official: 0, peakOfficial: 0, offOfficial: 0 };
+}
+function applySnapshotDelta(snapshot, row, sign) {
+  const ts = row.ts;
+  if (!ts) return;
+  const peak = isPeak(new Date(ts));
+  const official = messageOfficialCost(row.tokens, tierOf(row.model), peak) * sign;
+  const signedTokens = {
+    input: row.tokens.input * sign,
+    output: row.tokens.output * sign,
+    reasoning: row.tokens.reasoning * sign,
+    cacheRead: row.tokens.cacheRead * sign,
+    cacheWrite: row.tokens.cacheWrite * sign
+  };
+  const totals = snapshot.totals;
+  totals.requests += sign;
+  addTokens(totals.tokens, signedTokens);
+  totals.cost += row.cost * sign;
+  totals.official += official;
+  if (peak) totals.peakOfficial += official;
+  else totals.offOfficial += official;
+  snapshot.messageTotal += sign;
+  if (sign > 0) {
+    if (snapshot.firstTs === null || ts < snapshot.firstTs) snapshot.firstTs = ts;
+    if (snapshot.lastTs === null || ts > snapshot.lastTs) snapshot.lastTs = ts;
+  }
+  const dk = localDate(ts);
+  let day = snapshot.days.get(dk);
+  if (!day) {
+    day = emptyDay(dk);
+    snapshot.days.set(dk, day);
+  }
+  day.requests += sign;
+  addTokens(day.tokens, signedTokens);
+  day.cost += row.cost * sign;
+  day.official += official;
+  if (peak) day.peakOfficial += official;
+  else day.offOfficial += official;
+  let agg = snapshot.models.get(row.model);
+  if (!agg) {
+    agg = emptyModel(row.model, tierOf(row.model));
+    snapshot.models.set(row.model, agg);
+  }
+  agg.requests += sign;
+  addTokens(agg.tokens, signedTokens);
+  agg.cost += row.cost * sign;
+  agg.official += official;
+  if (peak) agg.peakOfficial += official;
+  else agg.offOfficial += official;
+}
+function buildSnapshot(data) {
+  const snapshot = {
+    generatedAt: data.generatedAt,
+    schema: data.schema,
+    dbPath: data.dbPath,
+    messageTotal: data.rows.length,
+    firstTs: null,
+    lastTs: null,
+    totals: { requests: 0, tokens: emptyTokens(), cost: 0, official: 0, peakOfficial: 0, offOfficial: 0 },
+    days: /* @__PURE__ */ new Map(),
+    models: /* @__PURE__ */ new Map()
+  };
+  for (const row of data.rows) {
+    const ts = row.ts;
+    if (!ts) continue;
+    const tokens = row.tokens;
+    const cost = row.cost;
+    const peak = isPeak(new Date(ts));
+    const official = messageOfficialCost(tokens, tierOf(row.model), peak);
+    if (snapshot.firstTs === null || ts < snapshot.firstTs) snapshot.firstTs = ts;
+    if (snapshot.lastTs === null || ts > snapshot.lastTs) snapshot.lastTs = ts;
+    const totals = snapshot.totals;
+    totals.requests += 1;
+    addTokens(totals.tokens, tokens);
+    totals.cost += cost;
+    totals.official += official;
+    if (peak) totals.peakOfficial += official;
+    else totals.offOfficial += official;
+    const dk = localDate(ts);
+    let day = snapshot.days.get(dk);
+    if (!day) {
+      day = emptyDay(dk);
+      snapshot.days.set(dk, day);
+    }
+    day.requests += 1;
+    addTokens(day.tokens, tokens);
+    day.cost += cost;
+    day.official += official;
+    if (peak) day.peakOfficial += official;
+    else day.offOfficial += official;
+    let agg = snapshot.models.get(row.model);
+    if (!agg) {
+      agg = emptyModel(row.model, tierOf(row.model));
+      snapshot.models.set(row.model, agg);
+    }
+    agg.requests += 1;
+    addTokens(agg.tokens, tokens);
+    agg.cost += cost;
+    agg.official += official;
+    if (peak) agg.peakOfficial += official;
+    else agg.offOfficial += official;
+  }
+  return snapshot;
+}
+function sameRow(a, b) {
+  return a.ts === b.ts && a.sid === b.sid && a.model === b.model && a.provider === b.provider && a.cost === b.cost && a.tokens.input === b.tokens.input && a.tokens.output === b.tokens.output && a.tokens.reasoning === b.tokens.reasoning && a.tokens.cacheRead === b.tokens.cacheRead && a.tokens.cacheWrite === b.tokens.cacheWrite;
+}
+function emptySide() {
+  return { requests: 0, tokens: emptyTokens(), official: 0, cost: 0 };
+}
+function subtreeIds(data, sessionId) {
+  const ids = /* @__PURE__ */ new Set([sessionId]);
+  const queue = [sessionId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const child of data.children.get(current) ?? []) {
+      if (!ids.has(child)) {
+        ids.add(child);
+        queue.push(child);
+      }
+    }
+  }
+  return ids;
+}
+function aggregateSession(data, sessionId) {
+  const meta = data.meta.get(sessionId);
+  if (!meta) return null;
+  const ids = subtreeIds(data, sessionId);
+  const agg = {
+    id: sessionId,
+    startedAt: meta.created,
+    lastMessageAt: null,
+    ...emptySide(),
+    peakOfficial: 0,
+    offOfficial: 0,
+    main: emptySide(),
+    children: emptySide()
+  };
+  for (const row of data.rows) {
+    if (!ids.has(row.sid)) continue;
+    const peak = row.ts ? isPeak(new Date(row.ts)) : false;
+    const official = messageOfficialCost(row.tokens, tierOf(row.model), peak);
+    const side = row.sid === sessionId ? agg.main : agg.children;
+    agg.requests += 1;
+    addTokens(agg.tokens, row.tokens);
+    agg.cost += row.cost;
+    agg.official += official;
+    if (peak) agg.peakOfficial += official;
+    else agg.offOfficial += official;
+    if (row.ts && (agg.lastMessageAt === null || row.ts > agg.lastMessageAt)) agg.lastMessageAt = row.ts;
+    side.requests += 1;
+    addTokens(side.tokens, row.tokens);
+    side.official += official;
+    side.cost += row.cost;
+  }
+  return agg;
+}
+function rankSessions(data, sinceMs, untilMs, limit) {
+  const roots = /* @__PURE__ */ new Map();
+  for (const row of data.rows) {
+    if (row.ts < sinceMs || row.ts > untilMs) continue;
+    let sid = row.sid;
+    let parent = data.meta.get(sid)?.parentId ?? null;
+    let guard = 0;
+    while (parent && guard < 64) {
+      sid = parent;
+      parent = data.meta.get(sid)?.parentId ?? null;
+      guard += 1;
+    }
+    const meta = data.meta.get(sid);
+    const peak = isPeak(new Date(row.ts));
+    const official = messageOfficialCost(row.tokens, tierOf(row.model), peak);
+    let agg = roots.get(sid);
+    if (!agg) {
+      agg = {
+        id: sid,
+        title: meta?.title || sid,
+        official: 0,
+        mainOfficial: 0,
+        childrenOfficial: 0,
+        cost: 0,
+        requests: 0,
+        tokens: emptyTokens(),
+        startedAt: meta?.created ?? row.ts,
+        lastMessageAt: 0
+      };
+      roots.set(sid, agg);
+    }
+    agg.requests += 1;
+    addTokens(agg.tokens, row.tokens);
+    agg.official += official;
+    if (row.sid === sid) agg.mainOfficial += official;
+    else agg.childrenOfficial += official;
+    agg.cost += row.cost;
+    if (row.ts > agg.lastMessageAt) agg.lastMessageAt = row.ts;
+  }
+  const sessions = [...roots.values()].sort((a, b) => b.official - a.official).slice(0, limit);
+  return { sessions };
+}
+var usageCache = null;
+function refreshUsage(cache, dbPath) {
+  const db = openDb(dbPath);
+  try {
+    const schema = detectSchema(db);
+    if (schema !== cache.data.schema) return false;
+    const cursor = cache.snapshot.lastTs ?? 0;
+    const since = Math.max(0, cursor - REFRESH_OVERLAP_MS);
+    const fresh = loadRows(db, schema, since);
+    const { meta, children } = loadMeta(db, schema);
+    cache.data.meta = meta;
+    cache.data.children = children;
+    cache.data.generatedAt = Date.now();
+    for (const row of fresh) {
+      const existing = cache.data.byId.get(row.id);
+      if (existing) {
+        if (sameRow(existing, row)) continue;
+        applySnapshotDelta(cache.snapshot, existing, -1);
+        existing.sid = row.sid;
+        existing.ts = row.ts;
+        existing.model = row.model;
+        existing.provider = row.provider;
+        existing.tokens = row.tokens;
+        existing.cost = row.cost;
+        applySnapshotDelta(cache.snapshot, existing, 1);
+      } else {
+        cache.data.byId.set(row.id, row);
+        cache.data.rows.push(row);
+        applySnapshotDelta(cache.snapshot, row, 1);
+      }
+    }
+    cache.snapshot.generatedAt = cache.data.generatedAt;
+    return true;
+  } finally {
+    db.close();
+  }
+}
+function getUsage() {
+  const dbPath = findDb();
+  if (!dbPath) return { error: "opencode.db not found" };
+  const now = Date.now();
+  if (usageCache && usageCache.data.dbPath === dbPath) {
+    usageCache.lastUsedAt = now;
+    if (now - usageCache.at < USAGE_TTL_MS) return usageCache;
+    try {
+      if (refreshUsage(usageCache, dbPath)) {
+        usageCache.at = now;
+        return usageCache;
+      }
+    } catch {
+      usageCache.at = now - USAGE_TTL_MS + 1e4;
+      return usageCache;
+    }
+  }
+  const data = loadUsage(dbPath);
+  const snapshot = buildSnapshot(data);
+  usageCache = { at: now, lastUsedAt: now, data, snapshot };
+  return usageCache;
+}
+setInterval(() => {
+  if (usageCache && Date.now() - usageCache.lastUsedAt > USAGE_IDLE_RELEASE_MS) {
+    usageCache = null;
+  }
+}, 6e4).unref();
+var balanceCache = null;
+var BALANCE_TTL_MS = 6e4;
+async function getBalance() {
+  const now = Date.now();
+  if (balanceCache && now - balanceCache.at < BALANCE_TTL_MS) return balanceCache.data;
+  const { key, source } = resolveApiKey();
+  if (!key) {
+    const data = { ok: false, reason: "no-key" };
+    balanceCache = { at: now, data };
+    return data;
+  }
+  try {
+    const res = await fetch("https://api.deepseek.com/user/balance", {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    const infos = Array.isArray(body.balance_infos) ? body.balance_infos : [];
+    const mapped = infos.map((entry) => ({
+      currency: String(entry.currency ?? ""),
+      total: String(entry.total_balance ?? ""),
+      granted: String(entry.granted_balance ?? ""),
+      toppedUp: String(entry.topped_up_balance ?? "")
+    }));
+    const info = infos.slice().sort((a, b) => Number(b.total_balance ?? 0) - Number(a.total_balance ?? 0))[0] ?? null;
+    const data = {
+      ok: true,
+      source,
+      isAvailable: Boolean(body.is_available),
+      currency: info ? String(info.currency ?? "") : null,
+      total: info ? String(info.total_balance ?? "") : null,
+      granted: info ? String(info.granted_balance ?? "") : null,
+      toppedUp: info ? String(info.topped_up_balance ?? "") : null,
+      infos: mapped,
+      at: now
+    };
+    balanceCache = { at: now, data };
+    return data;
+  } catch (error) {
+    const data = {
+      ok: false,
+      reason: "request-failed",
+      message: error instanceof Error ? error.message : String(error),
+      at: now
+    };
+    balanceCache = { at: now, data };
+    return data;
+  }
+}
+function serializeDays(snapshot, days) {
+  const out = [];
+  const today = /* @__PURE__ */ new Date();
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const agg = snapshot.days.get(key);
+    out.push(
+      agg ? agg : { date: key, requests: 0, tokens: emptyTokens(), cost: 0, official: 0, peakOfficial: 0, offOfficial: 0 }
+    );
+  }
+  return out;
+}
+async function buildSummary(days, sessionId) {
+  const usage = getUsage();
+  const now = Date.now();
+  const phase = isPeak(new Date(now)) ? "peak" : "offpeak";
+  const change = nextChange(now);
+  const balance = await getBalance();
+  if ("error" in usage) {
+    return {
+      ok: false,
+      generatedAt: now,
+      error: usage.error,
+      balance,
+      now: {
+        utc: new Date(now).toISOString(),
+        isPeak: phase === "peak",
+        phase,
+        nextChangeAt: change.at,
+        nextPhase: change.phase
+      },
+      window: { utc: PEAK_WINDOW_UTC, local: PEAK_WINDOW_LOCAL },
+      pricing: PRICING
+    };
+  }
+  const { data, snapshot } = usage;
+  const todayAgg = snapshot.days.get(localDate(now)) ?? null;
+  const sessionAgg = sessionId ? aggregateSession(data, sessionId) : null;
+  return {
+    ok: true,
+    generatedAt: now,
+    now: {
+      utc: new Date(now).toISOString(),
+      local: new Date(now).toLocaleString("zh-CN", { hour12: false }),
+      isPeak: phase === "peak",
+      phase,
+      nextChangeAt: change.at,
+      nextPhase: change.phase
+    },
+    window: { utc: PEAK_WINDOW_UTC, local: PEAK_WINDOW_LOCAL },
+    pricing: PRICING,
+    balance,
+    session: sessionAgg,
+    db: {
+      path: snapshot.dbPath,
+      schema: snapshot.schema,
+      messages: snapshot.messageTotal,
+      firstTs: snapshot.firstTs,
+      lastTs: snapshot.lastTs,
+      cachedAt: snapshot.generatedAt
+    },
+    totals: snapshot.totals,
+    today: todayAgg,
+    models: [...snapshot.models.values()].sort((a, b) => b.official - a.official || b.requests - a.requests),
+    days: serializeDays(snapshot, days),
+    notes: ["\u5B98\u65B9\u4EF7\u6309\u4EBA\u6C11\u5E01\u4EF7\u76EE\u4E0E\u5CF0\u8C37\u65F6\u6BB5\u9010\u6761\u91CD\u7B97\uFF1B\u7F13\u5B58\u4E0D\u8BA1\u5199\u5165\u8D39"]
+  };
+}
+function countdownShort(ms) {
+  const s = Math.max(0, Math.floor(ms / 1e3));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor(s % 3600 / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+async function buildStatusView(locale, directory) {
+  const usage = getUsage();
+  const now = Date.now();
+  const peak = isPeak(new Date(now));
+  const change = nextChange(now);
+  if ("error" in usage) {
+    return { rows: [{ kind: "note", id: "error", text: usage.error, tone: "error" }], controls: [] };
+  }
+  const { snapshot } = usage;
+  const today = snapshot.days.get(localDate(now)) ?? null;
+  let weekCny = 0;
+  let weekUsd = 0;
+  let weekCalls = 0;
+  const weekTokens = emptyTokens();
+  for (let i = 0; i < 7; i += 1) {
+    const day = snapshot.days.get(localDate(now - i * 864e5));
+    if (!day) continue;
+    weekCny += day.official;
+    weekUsd += day.cost;
+    weekCalls += day.requests;
+    weekTokens.input += day.tokens.input;
+    weekTokens.output += day.tokens.output;
+    weekTokens.reasoning += day.tokens.reasoning;
+    weekTokens.cacheRead += day.tokens.cacheRead;
+    weekTokens.cacheWrite += day.tokens.cacheWrite;
+  }
+  const balance = await getBalance();
+  const wallets = (balance.infos ?? []).map((entry) => `${entry.currency} ${entry.total}`).join(" \xB7 ");
+  const sym = balance.currency === "CNY" ? "\xA5" : balance.currency ? `${balance.currency} ` : "";
+  return {
+    rows: [
+      {
+        kind: "line",
+        id: "balance",
+        label: "Balance",
+        value: balance.ok ? `${sym}${balance.total ?? "\u2014"}` : "\u2014",
+        tooltip: balance.ok ? `${wallets || `${sym}${balance.total ?? ""}`} \u2014 separate wallets, never summed. From api.deepseek.com/user/balance.` : balance.reason === "no-key" ? "No local DeepSeek key found." : "Balance unavailable from the DeepSeek API.",
+        ...balance.ok && balance.isAvailable === false ? { badge: { label: "blocked", tone: "warning" } } : {}
+      },
+      {
+        kind: "line",
+        id: "today",
+        label: "Today",
+        value: fmtCny(today?.official ?? 0),
+        tooltip: `${fmtInt(today?.requests ?? 0)} calls \xB7 ${fmtTokens(today ? totalTokens(today.tokens) : 0)} tokens \xB7 $${(today?.cost ?? 0).toFixed(2)} recorded`
+      },
+      {
+        kind: "line",
+        id: "week",
+        label: "7 days",
+        value: fmtCny(weekCny),
+        tooltip: `${weekCalls} calls \xB7 ${fmtTokens(totalTokens(weekTokens))} tokens \xB7 ${fmtCny(weekCny / 7)} per day \xB7 $${weekUsd.toFixed(2)} recorded`
+      },
+      {
+        kind: "line",
+        id: "phase",
+        label: "Phase",
+        dot: peak ? "warning" : "success",
+        value: `${peak ? "peak" : "off-peak"} \xB7 ${countdownShort(change.at - now)}`,
+        tooltip: `Peak Mon\u2013Fri 01:00\u201304:00 and 06:00\u201310:00 UTC. Next switch to ${change.phase}.`
+      }
+    ],
+    controls: [{ kind: "button", id: "refresh", label: "Refresh" }]
+  };
+}
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  if (chunks.length === 0) return null;
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function sendJson(res, status, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "content-length": Buffer.byteLength(body) });
+  res.end(body);
+}
+var server = (0, import_node_http.createServer)((req, res) => {
+  const auth = req.headers.authorization || "";
+  if (TOKEN && auth !== `Bearer ${TOKEN}`) {
+    res.writeHead(401, { "content-type": "text/plain" });
+    res.end("unauthorized");
+    return;
+  }
+  const url = new URL(req.url || "/", "http://127.0.0.1");
+  void (async () => {
+    try {
+      if (url.pathname === "/health") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end("ok");
+        return;
+      }
+      if (url.pathname === "/summary") {
+        const days = Math.min(Math.max(Number(url.searchParams.get("days") || 30) || 30, 1), 365);
+        const sessionRaw = url.searchParams.get("session") || "";
+        const sessionId = /^[A-Za-z0-9_-]{1,80}$/.test(sessionRaw) ? sessionRaw : null;
+        sendJson(res, 200, await buildSummary(days, sessionId));
+        return;
+      }
+      if (url.pathname === "/sessions") {
+        const daysParam = Math.min(Math.max(Number(url.searchParams.get("days") || 30) || 30, 1), 365);
+        const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 20) || 20, 1), 100);
+        const usage = getUsage();
+        if ("error" in usage) {
+          sendJson(res, 404, { ok: false, error: usage.error });
+          return;
+        }
+        const now = Date.now();
+        const sinceRaw = Number(url.searchParams.get("since") || "");
+        const untilRaw = Number(url.searchParams.get("until") || "");
+        const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : now - daysParam * 864e5;
+        const until = Number.isFinite(untilRaw) && untilRaw > since ? untilRaw : now;
+        const { sessions } = rankSessions(usage.data, since, until, limit);
+        sendJson(res, 200, { ok: true, days: daysParam, since, until, sessions });
+        return;
+      }
+      if (url.pathname === "/status") {
+        const locale = url.searchParams.get("locale");
+        const directory = url.searchParams.get("directory");
+        if (req.method === "POST") {
+          const body = await readJsonBody(req);
+          if (body?.id === "refresh" && usageCache) usageCache.at = 0;
+        }
+        sendJson(res, 200, await buildStatusView(locale, directory));
+        return;
+      }
+      if (url.pathname === "/balance") {
+        sendJson(res, 200, await getBalance());
+        return;
+      }
+      sendJson(res, 404, { error: "not-found" });
+    } catch (error) {
+      sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
+  })();
+});
+server.listen(PORT, "127.0.0.1", () => {
+  console.log(`[deepseek-usage] service listening on 127.0.0.1:${PORT}`);
+});
