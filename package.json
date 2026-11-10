@@ -1,0 +1,44 @@
+{
+  "name": "openchamber-deepseek-usage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepSeek balance, spend and peak/off-peak pricing panel for OpenChamber",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@openchamber/sdk": "2.6.0",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0"
+  },
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": {
+      "openchamber": ">=2.0.1"
+    },
+    "contributes": {
+      "panel": {
+        "id": "deepseek-billing",
+        "name": "DeepSeek Usage",
+        "icon": "icon.svg",
+        "entry": "panel/index.html"
+      },
+      "service": {
+        "entry": "service/main.js",
+        "runtime": "host"
+      },
+      "statusSection": {
+        "title": "DeepSeek Usage",
+        "source": {
+          "path": "/status",
+          "interval": 60000
+        },
+        "height": 140,
+        "defaultExpanded": true
+      },
+      "attach": false
+    }
+  }
+}
