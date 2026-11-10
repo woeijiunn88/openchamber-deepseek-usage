@@ -17,6 +17,8 @@ var PRICING = {
 };
 var PEAK_WINDOW_UTC = "Mon\u2013Fri 01:00\u201304:00, 06:00\u201310:00 UTC";
 var PEAK_WINDOW_LOCAL = "Mon\u2013Fri 09:00\u201312:00, 14:00\u201318:00 GMT+8";
+var PEAK_WINDOW_SHORT_UTC = "Mon\u2013Fri 01\u201304, 06\u201310 UTC";
+var PEAK_WINDOW_SHORT_LOCAL = "09\u201312, 14\u201318 +8";
 function tierOf(model) {
   const m = model.toLowerCase();
   if (!m.startsWith("deepseek")) return null;
@@ -655,14 +657,12 @@ async function buildSummary(days, sessionId) {
     notes: ["\u5B98\u65B9\u4EF7\u6309\u4EBA\u6C11\u5E01\u4EF7\u76EE\u4E0E\u5CF0\u8C37\u65F6\u6BB5\u9010\u6761\u91CD\u7B97\uFF1B\u7F13\u5B58\u4E0D\u8BA1\u5199\u5165\u8D39"]
   };
 }
-function fmtSwitch(ms) {
-  const d = new Date(ms);
+function fmtSwitchCompact(ms, zone) {
+  const d = new Date(zone === "utc" ? ms : ms + 8 * 36e5);
   const pad = (n) => String(n).padStart(2, "0");
-  const utcDate = `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-  const utc = `${utcDate} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
-  const shifted = new Date(ms + 8 * 36e5);
-  const local = `${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())} GMT+8`;
-  return `${utc} \xB7 ${local}`;
+  const time = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const withinDay = Math.abs(ms - Date.now()) < 864e5;
+  return withinDay ? time : `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${time}`;
 }
 function countdownShort(ms) {
   const s = Math.max(0, Math.floor(ms / 1e3));
@@ -729,7 +729,10 @@ async function buildStatusView(locale, directory) {
         label: "Phase",
         dot: peak ? "warning" : "success",
         value: `${peak ? "peak" : "off-peak"} \xB7 ${countdownShort(change.at - now)}`,
-        tooltip: `Next ${change.phase === "peak" ? "peak" : "off-peak"} time: ${fmtSwitch(change.at)}. Peak windows: ${PEAK_WINDOW_UTC}; ${PEAK_WINDOW_LOCAL}.`
+        tooltip: `Next ${change.phase === "peak" ? "peak" : "off-peak"} ${fmtSwitchCompact(change.at, "utc")} UTC / ${fmtSwitchCompact(
+          change.at,
+          "local"
+        )} GMT+8 \xB7 peak ${PEAK_WINDOW_SHORT_UTC} (${PEAK_WINDOW_SHORT_LOCAL})`
       }
     ],
     controls: [{ kind: "button", id: "refresh", label: "Refresh" }]

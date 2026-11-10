@@ -51,6 +51,8 @@ const PRICING: Record<Tier, TierPrice> = {
 
 const PEAK_WINDOW_UTC = 'Mon–Fri 01:00–04:00, 06:00–10:00 UTC';
 const PEAK_WINDOW_LOCAL = 'Mon–Fri 09:00–12:00, 14:00–18:00 GMT+8';
+const PEAK_WINDOW_SHORT_UTC = 'Mon–Fri 01–04, 06–10 UTC';
+const PEAK_WINDOW_SHORT_LOCAL = '09–12, 14–18 +8';
 
 function tierOf(model: string): Tier | null {
   const m = model.toLowerCase();
@@ -1059,6 +1061,15 @@ function normalizeDir(value: string | null | undefined): string {
   return (value ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
+/** One-line switch stamp: time alone when within a day, else date and time. */
+function fmtSwitchCompact(ms: number, zone: 'utc' | 'local'): string {
+  const d = new Date(zone === 'utc' ? ms : ms + 8 * 3_600_000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const time = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const withinDay = Math.abs(ms - Date.now()) < 86_400_000;
+  return withinDay ? time : `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${time}`;
+}
+
 function fmtSwitch(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -1224,7 +1235,10 @@ async function buildStatusView(locale: string | null, directory: string | null):
         label: 'Phase',
         dot: peak ? 'warning' : 'success',
         value: `${peak ? 'peak' : 'off-peak'} \u00b7 ${countdownShort(change.at - now)}`,
-        tooltip: `Next ${change.phase === 'peak' ? 'peak' : 'off-peak'} time: ${fmtSwitch(change.at)}. Peak windows: ${PEAK_WINDOW_UTC}; ${PEAK_WINDOW_LOCAL}.`,
+        tooltip: `Next ${change.phase === 'peak' ? 'peak' : 'off-peak'} ${fmtSwitchCompact(change.at, 'utc')} UTC / ${fmtSwitchCompact(
+          change.at,
+          'local',
+        )} GMT+8 \u00b7 peak ${PEAK_WINDOW_SHORT_UTC} (${PEAK_WINDOW_SHORT_LOCAL})`,
       },
     ],
     controls: [{ kind: 'button', id: 'refresh', label: 'Refresh' }],

@@ -31,7 +31,9 @@ card with the same instant in both zones.
 chat, right-click copies the session id.
 
 **Work Status** — Balance, Today, 7 days, Phase. The 7-day per-day figure is
-in its tooltip.
+in its tooltip, and the phase tooltip condenses the next switch and both peak
+windows into one line: `Next off-peak 10:00 UTC / 18:00 GMT+8 · peak Mon–Fri
+01–04, 06–10 UTC (09–12, 14–18 +8)`.
 
 ## Currency rule
 
