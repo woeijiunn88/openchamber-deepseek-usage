@@ -429,15 +429,14 @@ function renderHeader(): void {
 
   phaseChip.dataset.phase = s.now.isPeak ? 'peak' : 'off';
   phaseChip.textContent = `${phaseText()} · ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
-  phaseChip.title = `Peak windows: ${s.window.utc}`;
-  phaseTip.hidden = false;
   phaseTip.textContent = '';
-  phaseTip.append(
-    h('span', 'tip-line', `Next switch · ${s.now.nextPhase}`),
-    h('span', 'tip-line', `UTC   ${fmtSwitchUtc(s.now.nextChangeAt)}`),
-    h('span', 'tip-line', `GMT+8 ${fmtSwitchLocal(s.now.nextChangeAt)}`),
-  );
-  phaseTip.hidden = false;
+  const head = h('span', 'tip-head', `Next switch · ${s.now.nextPhase}`);
+  const zoneRow = (zone: string, value: string) => {
+    const row = h('span', 'tip-row');
+    row.append(h('span', 'tip-k', zone), h('span', 'tip-v', value));
+    return row;
+  };
+  phaseTip.append(head, zoneRow('UTC', fmtSwitchUtc(s.now.nextChangeAt)), zoneRow('GMT+8', fmtSwitchLocal(s.now.nextChangeAt)));
 
   stamp.textContent = `updated ${fmtClock(s.generatedAt)}`;
   stamp.title = new Date(s.generatedAt).toLocaleString();

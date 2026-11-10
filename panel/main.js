@@ -2652,15 +2652,14 @@ ${GUEST_UI_LOOK_CSS}`;
     stat30V.title = `\xA5${last30.toFixed(2)} official`;
     phaseChip.dataset.phase = s.now.isPeak ? "peak" : "off";
     phaseChip.textContent = `${phaseText()} \xB7 ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
-    phaseChip.title = `Peak windows: ${s.window.utc}`;
-    phaseTip.hidden = false;
     phaseTip.textContent = "";
-    phaseTip.append(
-      h("span", "tip-line", `Next switch \xB7 ${s.now.nextPhase}`),
-      h("span", "tip-line", `UTC   ${fmtSwitchUtc(s.now.nextChangeAt)}`),
-      h("span", "tip-line", `GMT+8 ${fmtSwitchLocal(s.now.nextChangeAt)}`)
-    );
-    phaseTip.hidden = false;
+    const head2 = h("span", "tip-head", `Next switch \xB7 ${s.now.nextPhase}`);
+    const zoneRow = (zone, value) => {
+      const row = h("span", "tip-row");
+      row.append(h("span", "tip-k", zone), h("span", "tip-v", value));
+      return row;
+    };
+    phaseTip.append(head2, zoneRow("UTC", fmtSwitchUtc(s.now.nextChangeAt)), zoneRow("GMT+8", fmtSwitchLocal(s.now.nextChangeAt)));
     stamp.textContent = `updated ${fmtClock(s.generatedAt)}`;
     stamp.title = new Date(s.generatedAt).toLocaleString();
     footRight.textContent = s.balance.ok ? "\xA5 official \xB7 $ recorded" : "";
