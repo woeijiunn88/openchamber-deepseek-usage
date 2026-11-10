@@ -236,9 +236,3 @@ html, body {
 }
 .currency-btn:hover { opacity: 1; background: var(--oc-hover, rgba(0, 0, 0, 0.05)); }
 
-.session-list {
-  max-height: 360px;
-  overflow-y: auto;
-  margin: 0 -4px;
-}
-

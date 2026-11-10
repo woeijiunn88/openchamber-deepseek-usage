@@ -2757,7 +2757,7 @@ started ${fmtWhen(agg.startedAt)} \xB7 last ${fmtWhen(agg.lastMessageAt ?? 0)}
       paneBody.append(card);
     }
     const daily = h("div", "card daily");
-    const dailyLabel = h("div", "card-k", days > 7 ? `Daily \xB7 ${days} days \xB7 scroll` : `Daily \xB7 ${days} days`);
+    const dailyLabel = h("div", "card-k", `Daily \xB7 ${days} days`);
     dailyLabel.title = "One local day per row. Cost is the official price at that message\u2019s peak or off-peak rate.";
     daily.append(dailyLabel);
     const dayList = h("div", "day-list");
@@ -2813,9 +2813,9 @@ started ${fmtWhen(agg.startedAt)} \xB7 last ${fmtWhen(agg.lastMessageAt ?? 0)}
       paneBody.append(h("div", "loading", "Loading sessions\u2026"));
       return;
     }
-    const host2 = h("div", "list-host session-list");
+    const host2 = h("div", "list-host");
     const count = sessionsView.sessions.length;
-    paneBody.append(h("div", "card-k", `Sessions \xB7 ${count}${count > 8 ? " \xB7 scroll" : ""}`), host2);
+    paneBody.append(h("div", "card-k", `Sessions \xB7 ${count}`), host2);
     mountList(host2, {
       ariaLabel: "Spend by session",
       selectedId: null,

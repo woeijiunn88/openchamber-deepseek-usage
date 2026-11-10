@@ -548,7 +548,7 @@ function renderSpend(): void {
   }
 
   const daily = h('div', 'card daily');
-  const dailyLabel = h('div', 'card-k', days > 7 ? `Daily · ${days} days · scroll` : `Daily · ${days} days`);
+  const dailyLabel = h('div', 'card-k', `Daily · ${days} days`);
   dailyLabel.title = 'One local day per row. Cost is the official price at that message’s peak or off-peak rate.';
   daily.append(dailyLabel);
 
@@ -609,9 +609,9 @@ function renderSessions(): void {
     paneBody.append(h('div', 'loading', 'Loading sessions…'));
     return;
   }
-  const host = h('div', 'list-host session-list');
+  const host = h('div', 'list-host');
   const count = sessionsView.sessions.length;
-  paneBody.append(h('div', 'card-k', `Sessions · ${count}${count > 8 ? ' · scroll' : ''}`), host);
+  paneBody.append(h('div', 'card-k', `Sessions · ${count}`), host);
   mountList(host, {
     ariaLabel: 'Spend by session',
     selectedId: null,
