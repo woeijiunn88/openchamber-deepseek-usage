@@ -728,7 +728,7 @@ async function buildStatusView(locale, directory) {
         id: "phase",
         label: "Phase",
         badge: { label: peak ? "peak" : "off-peak", tone: peak ? "warning" : "success" },
-        value: `switches in ${countdownShort(change.at - now)}`,
+        value: `${countdownShort(change.at - now)} left`,
         tooltip: `Next ${change.phase === "peak" ? "peak" : "off-peak"} ${fmtSwitchCompact(change.at, "utc")} UTC / ${fmtSwitchCompact(
           change.at,
           "local"
