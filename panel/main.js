@@ -2649,10 +2649,13 @@ ${GUEST_UI_LOOK_CSS}`;
     stat30V.title = `\xA5${last30.toFixed(2)} official`;
     phaseChip.dataset.phase = s.now.isPeak ? "peak" : "off";
     phaseChip.textContent = `${phaseText()} \xB7 ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
-    phaseChip.title = `Next switch \xB7 ${s.now.nextPhase}
-UTC    ${fmtSwitchUtc(s.now.nextChangeAt)}
-GMT+8  ${fmtSwitchLocal(s.now.nextChangeAt)}
-Peak windows: ${s.window.utc}`;
+    const nextLabel = s.now.nextPhase === "peak" ? "peak" : "off-peak";
+    phaseChip.title = `Next ${nextLabel} time:
+${fmtSwitchUtc(s.now.nextChangeAt)} UTC
+${fmtSwitchLocal(s.now.nextChangeAt)} GMT+8
+Peak windows:
+${s.window.utc}
+${s.window.local}`;
     stamp.textContent = `updated ${fmtClock(s.generatedAt)}`;
     stamp.title = new Date(s.generatedAt).toLocaleString();
     footRight.textContent = s.balance.ok ? "\xA5 official \xB7 $ recorded" : "";
@@ -2850,8 +2853,16 @@ right-click copies the id`;
     phase.append(h("div", "card-k", "Current phase"));
     phase.append(
       kvRow("Phase", `${phaseText()} \xB7 switches in ${countdown}`, `Peak windows: ${s.window.utc}. Local: ${s.window.local}.`),
-      kvRow("Next switch \xB7 UTC", `${s.now.nextPhase} \xB7 ${fmtSwitchUtc(s.now.nextChangeAt)}`, "DeepSeek peak windows are defined in UTC."),
-      kvRow("Next switch \xB7 GMT+8", `${s.now.nextPhase} \xB7 ${fmtSwitchLocal(s.now.nextChangeAt)}`, "Same instant, GMT+8.")
+      kvRow(
+        `Next ${s.now.nextPhase === "peak" ? "peak" : "off-peak"} \xB7 UTC`,
+        fmtSwitchUtc(s.now.nextChangeAt),
+        "DeepSeek peak windows are defined in UTC."
+      ),
+      kvRow(
+        `Next ${s.now.nextPhase === "peak" ? "peak" : "off-peak"} \xB7 GMT+8`,
+        fmtSwitchLocal(s.now.nextChangeAt),
+        "Same instant, GMT+8."
+      )
     );
     const price = (tier, peakKey, offKey) => {
       const pk = s.pricing[tier]?.[peakKey];

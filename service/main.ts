@@ -49,8 +49,8 @@ const PRICING: Record<Tier, TierPrice> = {
   pro: { hitOff: 0.15, hitPeak: 0.3, missOff: 4.5, missPeak: 9, outOff: 13.5, outPeak: 27 },
 };
 
-const PEAK_WINDOW_UTC = '周一至周五 01:00–04:00、06:00–10:00 UTC';
-const PEAK_WINDOW_LOCAL = '北京时间 09:00–12:00、14:00–18:00';
+const PEAK_WINDOW_UTC = 'Mon–Fri 01:00–04:00, 06:00–10:00 UTC';
+const PEAK_WINDOW_LOCAL = 'Mon–Fri 09:00–12:00, 14:00–18:00 GMT+8';
 
 function tierOf(model: string): Tier | null {
   const m = model.toLowerCase();
@@ -1224,7 +1224,7 @@ async function buildStatusView(locale: string | null, directory: string | null):
         label: 'Phase',
         dot: peak ? 'warning' : 'success',
         value: `${peak ? 'peak' : 'off-peak'} \u00b7 ${countdownShort(change.at - now)}`,
-        tooltip: `Peak Mon\u2013Fri 01:00\u201304:00 and 06:00\u201310:00 UTC. Next switch to ${change.phase} at ${fmtSwitch(change.at)}.`,
+        tooltip: `Next ${change.phase === 'peak' ? 'peak' : 'off-peak'} time: ${fmtSwitch(change.at)}. Peak windows: ${PEAK_WINDOW_UTC}; ${PEAK_WINDOW_LOCAL}.`,
       },
     ],
     controls: [{ kind: 'button', id: 'refresh', label: 'Refresh' }],

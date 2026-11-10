@@ -15,8 +15,8 @@ var PRICING = {
   flash: { hitOff: 0.02, hitPeak: 0.04, missOff: 1, missPeak: 2, outOff: 4, outPeak: 8 },
   pro: { hitOff: 0.15, hitPeak: 0.3, missOff: 4.5, missPeak: 9, outOff: 13.5, outPeak: 27 }
 };
-var PEAK_WINDOW_UTC = "\u5468\u4E00\u81F3\u5468\u4E94 01:00\u201304:00\u300106:00\u201310:00 UTC";
-var PEAK_WINDOW_LOCAL = "\u5317\u4EAC\u65F6\u95F4 09:00\u201312:00\u300114:00\u201318:00";
+var PEAK_WINDOW_UTC = "Mon\u2013Fri 01:00\u201304:00, 06:00\u201310:00 UTC";
+var PEAK_WINDOW_LOCAL = "Mon\u2013Fri 09:00\u201312:00, 14:00\u201318:00 GMT+8";
 function tierOf(model) {
   const m = model.toLowerCase();
   if (!m.startsWith("deepseek")) return null;
@@ -729,7 +729,7 @@ async function buildStatusView(locale, directory) {
         label: "Phase",
         dot: peak ? "warning" : "success",
         value: `${peak ? "peak" : "off-peak"} \xB7 ${countdownShort(change.at - now)}`,
-        tooltip: `Peak Mon\u2013Fri 01:00\u201304:00 and 06:00\u201310:00 UTC. Next switch to ${change.phase} at ${fmtSwitch(change.at)}.`
+        tooltip: `Next ${change.phase === "peak" ? "peak" : "off-peak"} time: ${fmtSwitch(change.at)}. Peak windows: ${PEAK_WINDOW_UTC}; ${PEAK_WINDOW_LOCAL}.`
       }
     ],
     controls: [{ kind: "button", id: "refresh", label: "Refresh" }]
