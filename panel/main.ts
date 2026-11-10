@@ -138,8 +138,6 @@ const balanceRow = h('div', 'balance-row');
 const balanceValue = h('span', 'big', '—');
 const balanceCaption = h('span', 'caption', 'USD');
 const phaseChip = h('span', 'phase-chip');
-const phaseTip = h('span', 'phase-tip');
-phaseChip.append(phaseTip);
 balanceRow.append(balanceValue, balanceCaption, h('span', 'spacer'), phaseChip);
 
 const chatRow = h('div', 'chat-row');
@@ -428,14 +426,11 @@ function renderHeader(): void {
 
   phaseChip.dataset.phase = s.now.isPeak ? 'peak' : 'off';
   phaseChip.textContent = `${phaseText()} · ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
-  phaseTip.textContent = '';
-  const head = h('span', 'tip-head', `Next switch · ${s.now.nextPhase}`);
-  const zoneRow = (zone: string, value: string) => {
-    const row = h('span', 'tip-row');
-    row.append(h('span', 'tip-k', zone), h('span', 'tip-v', value));
-    return row;
-  };
-  phaseTip.append(head, zoneRow('UTC', fmtSwitchUtc(s.now.nextChangeAt)), zoneRow('GMT+8', fmtSwitchLocal(s.now.nextChangeAt)));
+  phaseChip.title =
+    `Next switch \u00b7 ${s.now.nextPhase}\n` +
+    `UTC    ${fmtSwitchUtc(s.now.nextChangeAt)}\n` +
+    `GMT+8  ${fmtSwitchLocal(s.now.nextChangeAt)}\n` +
+    `Peak windows: ${s.window.utc}`;
 
   stamp.textContent = `updated ${fmtClock(s.generatedAt)}`;
   stamp.title = new Date(s.generatedAt).toLocaleString();

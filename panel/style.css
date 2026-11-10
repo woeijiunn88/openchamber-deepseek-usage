@@ -242,29 +242,3 @@ html, body {
   margin: 0 -4px;
 }
 
-.phase-tip {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  display: none;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 150px;
-  padding: 7px 10px;
-  border: 1px solid var(--vu-border);
-  border-radius: 8px;
-  background: var(--oc-elevated, #f6f7f8);
-  color: var(--vu-fg);
-  font-size: 10.5px;
-  line-height: 1.5;
-  white-space: nowrap;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-  z-index: 5;
-}
-.phase-chip { position: relative; }
-.phase-chip:hover .phase-tip,
-.phase-chip:focus-within .phase-tip { display: flex; }
-.tip-head { font-weight: 600; margin-bottom: 1px; }
-.tip-row { display: flex; justify-content: space-between; gap: 18px; }
-.tip-k { color: var(--vu-muted); }
-.tip-v { font-variant-numeric: tabular-nums; }
