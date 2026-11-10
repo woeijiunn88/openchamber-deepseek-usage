@@ -241,3 +241,26 @@ html, body {
   overflow-y: auto;
   margin: 0 -4px;
 }
+
+.phase-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--vu-border);
+  border-radius: 8px;
+  background: var(--oc-elevated, #f6f7f8);
+  color: var(--vu-fg);
+  font-size: 10.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+.phase-chip { position: relative; }
+.phase-chip:hover .phase-tip,
+.phase-chip:focus-within .phase-tip { display: flex; }
+.phase-tip .tip-line { display: block; font-variant-numeric: tabular-nums; }

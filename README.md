@@ -22,9 +22,10 @@ off-peak split bar; a daily table with tokens in/out/cache, a phase marker per
 day and the official cost; efficiency cells (cache hit, ¥ per 1M tokens,
 ¥ per call).
 
-**Rates** — current phase and next switch (UTC and GMT+8), then the official
-price table per 1M tokens for flash and pro: cache hit, input and output, peak
-and off-peak. The phase chip's tooltip carries the same switch time.
+**Rates** — current phase, then two switch rows, one in UTC and one in GMT+8,
+followed by the official price table per 1M tokens for flash and pro: cache
+hit, input and output, peak and off-peak. Hovering the phase chip opens a small
+card with the same instant in both zones.
 
 **Sessions** — ranking with call counts and last activity. Click opens the
 chat, right-click copies the session id.

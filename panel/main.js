@@ -2407,6 +2407,9 @@ ${GUEST_UI_LOOK_CSS}`;
   var balanceValue = h("span", "big", "\u2014");
   var balanceCaption = h("span", "caption", "USD");
   var phaseChip = h("span", "phase-chip");
+  var phaseTip = h("span", "phase-tip");
+  phaseTip.hidden = true;
+  phaseChip.append(phaseTip);
   balanceRow.append(balanceValue, balanceCaption, h("span", "spacer"), phaseChip);
   var chatRow = h("div", "chat-row");
   var chatK = h("span", "chat-k", "Chat");
@@ -2589,13 +2592,15 @@ ${GUEST_UI_LOOK_CSS}`;
     const p = (n) => String(n).padStart(2, "0");
     return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
-  function fmtSwitch(ms) {
+  function fmtSwitchUtc(ms) {
     const d = new Date(ms);
     const pad = (n) => String(n).padStart(2, "0");
-    const utc = `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
-    const shifted = new Date(ms + 8 * 36e5);
-    const local = `${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())} GMT+8`;
-    return `${utc} \xB7 ${local}`;
+    return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  }
+  function fmtSwitchLocal(ms) {
+    const d = new Date(ms + 8 * 36e5);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
   function fmtCountdown(ms) {
     const s = Math.max(0, Math.floor(ms / 1e3));
@@ -2647,8 +2652,15 @@ ${GUEST_UI_LOOK_CSS}`;
     stat30V.title = `\xA5${last30.toFixed(2)} official`;
     phaseChip.dataset.phase = s.now.isPeak ? "peak" : "off";
     phaseChip.textContent = `${phaseText()} \xB7 ${fmtCountdown(s.now.nextChangeAt - Date.now())}`;
-    phaseChip.title = `Peak windows: ${s.window.utc}
-Next switch to ${s.now.nextPhase}: ${fmtSwitch(s.now.nextChangeAt)}`;
+    phaseChip.title = `Peak windows: ${s.window.utc}`;
+    phaseTip.hidden = false;
+    phaseTip.textContent = "";
+    phaseTip.append(
+      h("span", "tip-line", `Next switch \xB7 ${s.now.nextPhase}`),
+      h("span", "tip-line", `UTC   ${fmtSwitchUtc(s.now.nextChangeAt)}`),
+      h("span", "tip-line", `GMT+8 ${fmtSwitchLocal(s.now.nextChangeAt)}`)
+    );
+    phaseTip.hidden = false;
     stamp.textContent = `updated ${fmtClock(s.generatedAt)}`;
     stamp.title = new Date(s.generatedAt).toLocaleString();
     footRight.textContent = s.balance.ok ? "\xA5 official \xB7 $ recorded" : "";
@@ -2846,7 +2858,8 @@ right-click copies the id`;
     phase.append(h("div", "card-k", "Current phase"));
     phase.append(
       kvRow("Phase", `${phaseText()} \xB7 switches in ${countdown}`, `Peak windows: ${s.window.utc}. Local: ${s.window.local}.`),
-      kvRow("Next switch", `${s.now.nextPhase} \xB7 ${fmtSwitch(s.now.nextChangeAt)}`, "Shown in UTC and GMT+8.")
+      kvRow("Next switch \xB7 UTC", `${s.now.nextPhase} \xB7 ${fmtSwitchUtc(s.now.nextChangeAt)}`, "DeepSeek peak windows are defined in UTC."),
+      kvRow("Next switch \xB7 GMT+8", `${s.now.nextPhase} \xB7 ${fmtSwitchLocal(s.now.nextChangeAt)}`, "Same instant, GMT+8.")
     );
     const price = (tier, peakKey, offKey) => {
       const pk = s.pricing[tier]?.[peakKey];
