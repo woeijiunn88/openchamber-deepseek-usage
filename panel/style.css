@@ -243,3 +243,8 @@ html, body {
 .legend-dot.seg-off { background: var(--oc-success, #3f8f5f); opacity: 1; }
 .phase-chip::before { background: var(--oc-success, #3f8f5f); }
 .phase-chip[data-phase='peak']::before { background: var(--oc-warning, #b45309); }
+.phase-chip[data-phase='peak'] {
+  border-color: var(--oc-warning, #b45309);
+  color: var(--oc-warning, #b45309);
+  font-weight: 600;
+}
