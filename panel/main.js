@@ -2408,7 +2408,6 @@ ${GUEST_UI_LOOK_CSS}`;
   var balanceCaption = h("span", "caption", "USD");
   var phaseChip = h("span", "phase-chip");
   var phaseTip = h("span", "phase-tip");
-  phaseTip.hidden = true;
   phaseChip.append(phaseTip);
   balanceRow.append(balanceValue, balanceCaption, h("span", "spacer"), phaseChip);
   var chatRow = h("div", "chat-row");

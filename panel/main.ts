@@ -139,7 +139,6 @@ const balanceValue = h('span', 'big', '—');
 const balanceCaption = h('span', 'caption', 'USD');
 const phaseChip = h('span', 'phase-chip');
 const phaseTip = h('span', 'phase-tip');
-phaseTip.hidden = true;
 phaseChip.append(phaseTip);
 balanceRow.append(balanceValue, balanceCaption, h('span', 'spacer'), phaseChip);
 
