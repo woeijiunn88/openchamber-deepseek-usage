@@ -1,6 +1,2 @@
 node_modules/
 *.log
-# Local-only development residue
-preview/
-docs/
-panel/mock.ts
