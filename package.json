@@ -38,7 +38,10 @@
         "height": 140,
         "defaultExpanded": true
       },
-      "attach": false
+      "attach": false,
+      "capabilities": [
+        "sessions"
+      ]
     }
   }
 }

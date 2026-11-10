@@ -619,7 +619,11 @@ function renderSessions(): void {
     ariaLabel: 'Spend by session',
     selectedId: null,
     onSelect: (id) => {
-      void hostClient().openSession(id);
+      void hostClient()
+        .openSession(id)
+        .catch(() => {
+          void hostClient().toast({ kind: 'error', message: 'Could not open that session', dismiss: true });
+        });
     },
     emptyText: 'No sessions in this range.',
     items: sessionsView.sessions.map((row) => ({
